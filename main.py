@@ -2,12 +2,12 @@ from antares_client import StreamingClient
 from statsmodels.stats.weightstats import DescrStatsW
 import os
 import numpy as np
-from google.cloud import logging
+# from google.cloud import logging
 
 # Instantiates the logging client
-logging_client = logging.Client()
-log_name = "alert-streaming-client"
-logger = logging_client.logger(log_name)
+# logging_client = logging.Client()
+# log_name = "alert-streaming-client"
+# logger = logging_client.logger(log_name)
 
 TOPICS = ["high_flux_ratio_wrt_nn"]
 CONFIG = {
@@ -15,7 +15,6 @@ CONFIG = {
     "api_secret": os.environ["API_SECRET"],
 }
 # class def here
-
 def process_alert(topic, locus):
     """Put your code here!"""
     if locus.alert.properties['ant_survey'] != 1: #be sure we aren't triggered with upper limits
@@ -75,14 +74,13 @@ def process_alert(topic, locus):
     if des.std > threshold:
         #print (f'hit!!! {tag} {alert_id} {ztf_object_id}')
         locus.tag(tag)
-        logger.log_text(locus.tag(tag)) # log alert
-    pass
-
+        # logger.log_text("Received Alert!")
+        # logger.log_text(locus.tag(tag)) # log alert
 
 def main():
-   with StreamingClient(TOPICS, **CONFIG) as client:
-       for topic, locus in client.iter():
-           process_alert(topic, locus)
+    with StreamingClient(TOPICS, **CONFIG) as client:
+        for topic, locus in client.iter():
+            process_alert(topic, locus)
 
 
 if __name__ == "__main__":
