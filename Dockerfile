@@ -10,18 +10,10 @@ RUN add-apt-repository "deb https://packages.confluent.io/clients/deb $(lsb_rele
 RUN apt-get update && apt-get -y install confluent-platform
 
 # Install the fortunes binary from the debian repositories.
-RUN apt-get update && apt-get install -y fortunes librdkafka-dev confluent-platform
-#default-jdk 
+RUN apt-get update && apt-get install -y fortunes
 
 # Change the -p argument to use Python 2.7 if desired.
 RUN virtualenv /env -p python3.6
-
-# Install Kafka
-# RUN  -t -v "$PWD:/v" quay.io/pypa/$distro /v/packaging/tools/build-manylinux.sh /v /v/artifacts/librdkafka-${distro}.tgz
-# WORKDIR /tmp
-# RUN wget https://downloads.apache.org/kafka/2.8.0/kafka_2.12-2.8.0.tgz
-# RUN tar xzf kafka_2.12-2.8.0.tgz
-# RUN mv kafka_2.12-2.8.0 /usr/local/kafka
 
 # Set virtualenv environment variables. This is equivalent to running
 # source /env/bin/activate.
@@ -32,8 +24,8 @@ ADD requirements.txt /app/
 RUN pip install -r requirements.txt
 ADD . /app/
 
-ENV API_KEY ""
-ENV API_SECRET ""
+ENV API_KEY=
+ENV API_SECRET=
 
 # CMD gunicorn -b :$PORT main:app
 # the tls handshake occurs over port 9092
