@@ -24,6 +24,8 @@ ADD requirements.txt /app/
 RUN pip install -r requirements.txt
 ADD . /app/
 
+ENV CLOUD_STORAGE_BUCKET=alert-stream-data
+ENV TOPIC=high_amplitude_variable_star_candidate_staging
 ENV API_KEY=
 ENV API_SECRET=
 
