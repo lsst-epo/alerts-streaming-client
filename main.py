@@ -66,7 +66,7 @@ def upload_alert(filename, content):
     logger.log_text(blob.self_link)
     logger.log_text("done logging")
     # logger.log_text(blob.public_url)
-    return blob.path
+    return blob.self_link
 
 
 def main():
