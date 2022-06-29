@@ -24,11 +24,6 @@ ADD requirements.txt /app/
 RUN pip install -r requirements.txt
 ADD . /app/
 
-ENV CLOUD_STORAGE_BUCKET=alert-stream-data
-ENV TOPIC=high_amplitude_variable_star_candidate_staging
-ENV API_KEY=
-ENV API_SECRET=
-
 # CMD gunicorn -b :$PORT main:app
 # the tls handshake occurs over port 9092
 EXPOSE 9092/tcp

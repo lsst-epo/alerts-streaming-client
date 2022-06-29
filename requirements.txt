@@ -1,5 +1,8 @@
 antares-client==1.2.0
 google-cloud-logging
 google-cloud-storage==1.43.0
+SQLAlchemy==1.4.27
+pg8000==1.23.0
+psycopg2-binary
 numpy
 statsmodels
