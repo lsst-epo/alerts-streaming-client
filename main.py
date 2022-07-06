@@ -1,10 +1,12 @@
 from antares_client import StreamingClient
+from antares_client.search import get_by_id
 from statsmodels.stats.weightstats import DescrStatsW
 import os, json, time
 import numpy as np
 from google.cloud import logging
 from google.cloud import storage
 import sqlalchemy
+import pickle
 
 CLOUD_STORAGE_BUCKET = os.environ['CLOUD_STORAGE_BUCKET']
 
@@ -38,9 +40,40 @@ def process_alert(topic, locus):
     logger.log_text(json.dumps(locus.__dict__))
 
     destination_filename = locus.locus_id  +  "-" + str(round(time.time() * 1000)) + ".json"
+
+    if test_count == 0:
+        query_by_id(locus.locus_id)
+
     alert = json.dumps(locus.__dict__)
     alert_url = upload_alert(destination_filename, alert)
     save_relational_data(alert_url, alert)
+
+def query_by_id(locus_id):
+    logger.log_text("locus_id : " + locus_id)
+
+    query_results = get_by_id(locus_id)
+    f = open("/tmp/query_result.pkl", 'wb')
+    pickle.dump(query_results, f)
+    f.close()
+    results_file = open('/tmp/query_result.pkl', 'rb') 
+    
+
+    buf =  pickle.load(results_file)
+    logger.log_text("about to log results file properties:")
+    logger.log_text("q.alerts : " + str(buf.alerts))
+    logger.log_text("q.catalog_objects : " + str(buf.catalog_objects))
+    logger.log_text("q.catalogs : " + str(buf.catalogs))
+    logger.log_text("q.coordinates : " + str(buf.coordinates))
+    logger.log_text("q.dec : " + str(buf.dec))
+    logger.log_text("q.ra : " + str(buf.ra))
+    logger.log_text("q.properties : " + str(buf.properties))
+    logger.log_text("q.tags : " + str(buf.tags))
+
+    logger.log_text("q.lightcurve : " + str(buf.lightcurve))
+    logger.log(buf.lightcurve)
+
+    results_file.close()
+    logger.log_text("about to log query results")
     
 def save_relational_data(alert_url, alert):
     db = init_connection_engine()
@@ -52,20 +85,17 @@ def save_relational_data(alert_url, alert):
     try:
         with db.connect() as conn:
             row = conn.execute(stmt, topic=TOPICS[0], url=alert_url, raw_payload=alert)
-                # batchId = row['cit_sci_batch_id']
             conn.close()
     except Exception as e:
-        logger.log_text(e)
+        logger.log(e)
 
 def upload_alert(filename, content):
     blob = bucket.blob(filename)
     blob.upload_from_string(content)
     
     logger.log_text("logging blob.self_link:")
-    # logger.log_text(blob.path)
     logger.log_text(blob.self_link)
     logger.log_text("done logging")
-    # logger.log_text(blob.public_url)
     return blob.self_link
 
 
