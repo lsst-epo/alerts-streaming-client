@@ -6,3 +6,4 @@ pg8000==1.23.0
 psycopg2-binary
 numpy
 statsmodels
+elasticsearch_dsl

@@ -1,8 +1,6 @@
 from antares_client import StreamingClient
-from antares_client.search import get_by_id
-from statsmodels.stats.weightstats import DescrStatsW
+from antares_client.search import get_by_id, search
 import os, json, time
-import numpy as np
 from google.cloud import logging
 from google.cloud import storage
 import sqlalchemy
@@ -45,8 +43,13 @@ def process_alert(topic, locus):
         query_by_id(locus.locus_id)
 
     alert = json.dumps(locus.__dict__)
-    alert_url = upload_alert(destination_filename, alert)
-    save_relational_data(alert_url, alert)
+    alert_url = upload_file(destination_filename, alert)
+    save_alert_data(alert_url, alert)
+
+
+def query_by_date_range():
+
+    return
 
 def query_by_id(locus_id):
     logger.log_text("locus_id : " + locus_id)
@@ -56,7 +59,6 @@ def query_by_id(locus_id):
     pickle.dump(query_results, f)
     f.close()
     results_file = open('/tmp/query_result.pkl', 'rb') 
-    
 
     buf =  pickle.load(results_file)
     logger.log_text("about to log results file properties:")
@@ -73,9 +75,61 @@ def query_by_id(locus_id):
     logger.log(buf.lightcurve)
 
     results_file.close()
-    logger.log_text("about to log query results")
+    logger.log_text("done logging query results")
+
+    logger.log_text("about to log json object")
+    qr_json = jsonify_query_results(buf)
+    logger.log_text(qr_json)
+
+    destination_filename = locus_id  +  "-query-results-" + str(round(time.time() * 1000)) + ".json"
+    qr_url = upload_file(destination_filename, qr_json)
+
+    logger.log_text("about to save DB data")
+    save_query_data(qr_url, qr_json, locus_id)
+    logger.log_text("done saving DB data")
+
+def jsonify_query_results(qr):
+    json_qr = {}
+    json_qr["ra"] = qr.ra
+    json_qr["dec"] = qr.dec
+
+    # Loop through arrays property and convert each Alert object to a dict
+    alerts_arr = []
+    for alert in qr.alerts:
+        alerts_arr.append(alert.alert_id)
+    json_qr["alerts"] = alerts_arr
+
+    # Convert Panda DataFrame to dict
+    # json_qr["lightcurve"] = qr.lightcurve.to_dict()
     
-def save_relational_data(alert_url, alert):
+    json_qr["catalog_objects"] = qr.catalog_objects
+    json_qr["catalogs"] = qr.catalogs
+    json_qr["locus_id"] = qr.locus_id
+    json_qr["properties"] = qr.properties
+    json_qr["tags"] = qr.tags
+    # json_qr["timeseries"] = qr.timeseries.as_array()
+    json_qr["watch_list_ids"] = qr.watch_list_ids
+    json_qr["watch_object_ids"] = qr.watch_object_ids
+
+    return json.dumps(json_qr)
+    
+def save_query_data(qr_url, results, locus_id):
+    db = init_connection_engine()
+    stmt = sqlalchemy.text(
+        "INSERT INTO alert_query_store (search_terms, url, raw_query_results)"
+        "VALUES (:search_terms, :url, :raw_query_results)"
+    )
+
+    try:
+        search_term = "search_by_id(" + locus_id + ")"
+        with db.connect() as conn:
+            row = conn.execute(stmt, search_terms=search_term, url=qr_url, raw_query_results=results)
+            conn.close()
+    except Exception as e:
+        logger.log("an exception occurred!!!")
+        logger.log_text(e)
+
+def save_alert_data(alert_url, alert):
     db = init_connection_engine()
     stmt = sqlalchemy.text(
         "INSERT INTO alert_stream_payloads (topic, url, raw_payload)"
@@ -89,7 +143,7 @@ def save_relational_data(alert_url, alert):
     except Exception as e:
         logger.log(e)
 
-def upload_alert(filename, content):
+def upload_file(filename, content):
     blob = bucket.blob(filename)
     blob.upload_from_string(content)
     
