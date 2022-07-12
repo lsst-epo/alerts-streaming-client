@@ -1,10 +1,15 @@
 from antares_client import StreamingClient
 from antares_client.search import get_by_id, search
-import os, json, time
+import os, json, time, datetime
 from google.cloud import logging
 from google.cloud import storage
+from elasticsearch_dsl import Search
+from flask import Flask, request, Response
 import sqlalchemy
 import pickle
+import julian
+
+app = Flask(__name__)
 
 CLOUD_STORAGE_BUCKET = os.environ['CLOUD_STORAGE_BUCKET']
 
@@ -19,6 +24,7 @@ DB_HOST = os.environ["DB_HOST"]
 DB_PORT = os.environ["DB_PORT"]
 DB_NAME = os.environ["DB_NAME"]
 TOPICS = [os.environ["TOPIC"]]
+TOPIC = os.environ["TOPIC"]
 CONFIG = {
     "api_key": os.environ["API_KEY"],
     "api_secret": os.environ["API_SECRET"]
@@ -32,12 +38,61 @@ test_count = 0
 gcs = storage.Client()
 bucket = gcs.bucket(CLOUD_STORAGE_BUCKET)
 
+@app.route("/tasks/query-results")
+def get_query_results():
+    from_d = request.args.get("from")
+    to_d = request.args.get("to")
+    logger.log_text("/tasks/query-results/ triggered!!!")
+    payload = {}
+    logger.log_text("about to query from endpoint")
+
+    if from_d == None or to_d == None:
+        query_results = query_by_date_range(get_date_in_mjd(), get_date_in_mjd() - 5)
+    else:
+        query_results = query_by_date_range(validate_and_convert_input_date(to_d), validate_and_convert_input_date(from_d))
+    
+    logger.log_text("done querying")
+
+    if query_results != None:
+        logger.log_text("query results are NOT empty!!!")
+        payload["result_count"] = len(query_results)
+        for result in query_results:
+            qr_json = jsonify_query_results(result)
+            dest_fn = create_filename_from_locus_id(result.locus_id)
+            qr_url = upload_file(dest_fn, qr_json)
+            save_query_data(qr_url, qr_json, result.locus_id)
+    else:
+        logger.log_text("query results ARE empty!!!")
+        payload["result_count"] = 0
+    # res = json.dumps(payload)
+    return payload, 200
+
+# Format of input must be in the following format:
+#
+# MMDDYYYY
+#
+# Example: 07112022
+def validate_and_convert_input_date(pre_date):
+    if isinstance(pre_date, int):
+        pre_date = str(pre_date)
+
+    month = pre_date[0:2]
+    day = pre_date[2:4]
+    year = pre_date[4:]
+    post_date = year + "-" + month + "-" + day
+    d = datetime.fromisoformat(post_date)
+
+    return round(julian.to_jd(d, fmt="mjd"))
+
+def create_filename_from_locus_id(locus_id):
+    return locus_id  +  "-" + str(round(time.time() * 1000)) + ".json"
+
 def process_alert(topic, locus):
     logger.log_text("got an alert!")
     logger.log_text(json.dumps(topic))
     logger.log_text(json.dumps(locus.__dict__))
 
-    destination_filename = locus.locus_id  +  "-" + str(round(time.time() * 1000)) + ".json"
+    destination_filename = create_filename_from_locus_id(locus.locus_id)
 
     if test_count == 0:
         query_by_id(locus.locus_id)
@@ -45,11 +100,44 @@ def process_alert(topic, locus):
     alert = json.dumps(locus.__dict__)
     alert_url = upload_file(destination_filename, alert)
     save_alert_data(alert_url, alert)
+    query_by_date_range(get_date_in_mjd(), get_date_in_mjd() - 5)
 
+# mjd: modified julian date
+def get_date_in_mjd():
+    return round(julian.to_jd(datetime.datetime.today(), fmt="mjd"))
 
-def query_by_date_range():
-
-    return
+def query_by_date_range(to_d, from_d):
+    global test_count, test_limit
+    logger.log_text("about to perform elasticsearch query")
+    logger.log_text("from: " + str(from_d) + " , to: " + str(to_d))
+    query = (
+        Search()
+        .filter("range", **{"properties.newest_alert_observation_time": {"gte": from_d, "lte": to_d}})
+        .filter("term", tags=TOPIC)
+        .to_dict()
+    )
+    print("about to perform elasticsearch query")
+    try:
+        results = search(query)
+        # print(type(results))
+        test_count = 0 # reset test counter
+        res_set = []
+        for result in results:
+            if test_count == test_limit:
+                break
+            res_set.append(result)
+            print("logging result:")
+            # print(type(result))
+            print(result)
+            test_count += 1
+        # print("logging first_result:")
+        # print(first_result)
+        return res_set
+    except Exception as e:
+        print("an error occurred!!!")
+        print(e.with_traceback)
+        print(dir(e))
+    return None
 
 def query_by_id(locus_id):
     logger.log_text("locus_id : " + locus_id)
@@ -81,7 +169,7 @@ def query_by_id(locus_id):
     qr_json = jsonify_query_results(buf)
     logger.log_text(qr_json)
 
-    destination_filename = locus_id  +  "-query-results-" + str(round(time.time() * 1000)) + ".json"
+    destination_filename = create_filename_from_locus_id(locus_id)
     qr_url = upload_file(destination_filename, qr_json)
 
     logger.log_text("about to save DB data")
@@ -201,4 +289,5 @@ def init_tcp_connection_engine(db_config):
     return pool
 
 if __name__ == "__main__":
-    main()
+    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    # main()

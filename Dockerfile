@@ -26,6 +26,7 @@ ADD . /app/
 
 # CMD gunicorn -b :$PORT main:app
 # the tls handshake occurs over port 9092
-EXPOSE 9092/tcp
-WORKDIR /app
-CMD [ "python", "./main.py"]
+# EXPOSE 9092/tcp
+# WORKDIR /app
+# CMD [ "python", "./main.py"]
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 main:app

@@ -7,3 +7,6 @@ psycopg2-binary
 numpy
 statsmodels
 elasticsearch_dsl
+Flask >= 1.0
+gunicorn==20.1.0
+julian==0.14

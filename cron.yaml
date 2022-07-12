@@ -1,0 +1,6 @@
+cron:
+  - description: "daily morning query job"
+    url: /tasks/query-results
+    schedule: every day 06:00
+    timezone: America/Phoenix
+    target: alert-streaming-client
