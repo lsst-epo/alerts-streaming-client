@@ -1,0 +1,46 @@
+# NOTE: Commented out for now until it's deemed necessary to run the ANTARES client
+#       in an environment other than dev
+
+# name: 'Deploy to Integration Environment Upon PR Merge'
+
+# on:
+#   push:
+#     branches:
+#       - 'master'
+
+# jobs:
+#   build-push-deploy:
+#     name: 'Deploy Integration Version'
+#     runs-on: ubuntu-latest
+#     if: ${{ github.event.action != 'closed' }}
+
+#     # Checkout the repository to the GitHub Actions runner
+#     steps:
+#     - name: Checkout
+#       uses: actions/checkout@v2
+
+#     # gcloud CLI setup
+#     - name: Login to GCP
+#       uses: google-github-actions/setup-gcloud@v0
+#       with:
+#         service_account_key: ${{ secrets.SKYVIEWER_INT_SERVICE_ACCOUNT }}
+#         project_id: edc-int-6c5e
+#         export_default_credentials: true
+
+#     # The app.yaml is explicitly ignored in the .gitignore
+#     - name: Create app.yaml
+#       run: touch app.yaml
+    
+#     - name: Get app.yaml
+#       run: gcloud secrets versions access latest --secret=alert-streaming-client-appyaml > app.yaml
+
+#     - name: Format version name
+#       id: version_name
+#       run: echo "version_name=$(echo \"${{ github.head_ref }}\" | sed 's/[_.,\/]/-/g' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+#     - name: Deploy to App Engine
+#       env:
+#         BRANCH_NAME: ${{ env.version_name }}
+#       run: |
+#         gcloud app deploy app.yaml \
+#           --promote
