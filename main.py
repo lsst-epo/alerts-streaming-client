@@ -1,6 +1,6 @@
 from antares_client import StreamingClient
 from antares_client.search import get_by_id, search
-import os, json, time, datetime
+import os, json, time, datetime, urllib.request
 from google.cloud import logging
 from google.cloud import storage
 from elasticsearch_dsl import Search
@@ -47,9 +47,9 @@ def get_query_results():
     logger.log_text("about to query from endpoint")
 
     if from_d == None or to_d == None:
-        query_results = query_by_date_range(get_date_in_mjd(), get_date_in_mjd() - 5)
+        query_results, query = query_by_date_range(get_date_in_mjd(), get_date_in_mjd() - 5)
     else:
-        query_results = query_by_date_range(validate_and_convert_input_date(to_d), validate_and_convert_input_date(from_d))
+        query_results, query = query_by_date_range(validate_and_convert_input_date(to_d), validate_and_convert_input_date(from_d))
     
     logger.log_text("done querying")
 
@@ -60,7 +60,7 @@ def get_query_results():
             qr_json = jsonify_query_results(result)
             dest_fn = create_filename_from_locus_id(result.locus_id)
             qr_url = upload_file(dest_fn, qr_json)
-            save_query_data(qr_url, qr_json, result.locus_id)
+            save_query_data(qr_url, qr_json, result.locus_id, query)
     else:
         logger.log_text("query results ARE empty!!!")
         payload["result_count"] = 0
@@ -106,6 +106,7 @@ def process_alert(topic, locus):
 def get_date_in_mjd():
     return round(julian.to_jd(datetime.datetime.today(), fmt="mjd"))
 
+
 def query_by_date_range(to_d, from_d):
     global test_count, test_limit
     logger.log_text("about to perform elasticsearch query")
@@ -127,17 +128,15 @@ def query_by_date_range(to_d, from_d):
                 break
             res_set.append(result)
             print("logging result:")
-            # print(type(result))
             print(result)
             test_count += 1
-        # print("logging first_result:")
-        # print(first_result)
-        return res_set
+        return res_set, query.__str__()
     except Exception as e:
         print("an error occurred!!!")
         print(e.with_traceback)
         print(dir(e))
     return None
+
 
 def query_by_id(locus_id):
     logger.log_text("locus_id : " + locus_id)
@@ -149,18 +148,6 @@ def query_by_id(locus_id):
     results_file = open('/tmp/query_result.pkl', 'rb') 
 
     buf =  pickle.load(results_file)
-    logger.log_text("about to log results file properties:")
-    logger.log_text("q.alerts : " + str(buf.alerts))
-    logger.log_text("q.catalog_objects : " + str(buf.catalog_objects))
-    logger.log_text("q.catalogs : " + str(buf.catalogs))
-    logger.log_text("q.coordinates : " + str(buf.coordinates))
-    logger.log_text("q.dec : " + str(buf.dec))
-    logger.log_text("q.ra : " + str(buf.ra))
-    logger.log_text("q.properties : " + str(buf.properties))
-    logger.log_text("q.tags : " + str(buf.tags))
-
-    logger.log_text("q.lightcurve : " + str(buf.lightcurve))
-    logger.log(buf.lightcurve)
 
     results_file.close()
     logger.log_text("done logging query results")
@@ -183,8 +170,60 @@ def jsonify_query_results(qr):
 
     # Loop through arrays property and convert each Alert object to a dict
     alerts_arr = []
+    alerts_limit = 1
+    alerts_count = 0
     for alert in qr.alerts:
-        alerts_arr.append(alert.alert_id)
+        alert_data = {}
+        alert_data["alert_id"] = alert.alert_id
+        alert_data["ztf_pid"] = alert.properties["ztf_pid"]
+        alerts_arr.append(alert_data)
+
+        if alerts_count < alerts_limit:
+            if alert.alert_id[0:15] != "ztf_upper_limit":
+                candidate_id = alert.alert_id[alert.alert_id.find(':')+1:]
+                sci_stamp_url = None
+                diff_stamp_url = None
+                templ_stamp_url = None
+
+                # Science stamp
+                try:
+                    sci_stamp = f"https://storage.googleapis.com/antares-production-ztf-stamps/candid{candidate_id}_pid{candidate_id[0:12]}_targ_sci.fits.png"
+                    sci_res = urllib.request.urlopen(sci_stamp)
+                    sci_bytes = sci_res.read()
+                    sci_stamp_url = upload_file(f"candid{candidate_id}_pid{candidate_id[0:12]}_targ_sci.fits.png", sci_bytes)
+                except Exception as e:
+                    print("Could not fetch the science stamp for " + alert.alert_id)
+                    print(e)
+
+                # Diff stamp
+                try:
+                    diff_stamp = f"https://storage.googleapis.com/antares-production-ztf-stamps/candid{candidate_id}_pid{candidate_id[0:12]}_targ_diff.fits.png"
+                    diff_res = urllib.request.urlopen(diff_stamp)
+                    diff_bytes = diff_res.read()
+                    diff_stamp_url = upload_file(f"candid{candidate_id}_pid{candidate_id[0:12]}_targ_diff.fits.png", diff_bytes)
+                except Exception as e:
+                    print("Could not fetch the difference stamp for " + alert.alert_id)
+                    print(e)
+
+                # Template stamp
+                try:
+                    templ_stamp = f"https://storage.googleapis.com/antares-production-ztf-stamps/candid{candidate_id}_ref.fits.png"
+                    templ_res = urllib.request.urlopen(templ_stamp)
+                    templ_bytes = templ_res.read()
+                    templ_stamp_url = upload_file(f"candid{candidate_id}_pid{candidate_id[0:12]}_targ_diff.fits.png", templ_bytes)
+                except Exception as e:
+                    print("Could not fetch the template stamp for " + alert.alert_id)
+                    print(e)
+
+                # Upload alert
+                destination_filename = create_filename_from_locus_id(alert.alert_id)
+                alert_json = json.dumps(alert.__dict__)
+                alert_json_url = upload_file(destination_filename, alert_json)
+
+                # Persist date
+                save_alert_data(alert_json_url, alert_json, sci_stamp_url, diff_stamp_url, templ_stamp_url)
+                alerts_count += 1
+       
     json_qr["alerts"] = alerts_arr
 
     # Convert Panda DataFrame to dict
@@ -201,7 +240,7 @@ def jsonify_query_results(qr):
 
     return json.dumps(json_qr)
     
-def save_query_data(qr_url, results, locus_id):
+def save_query_data(qr_url, results, locus_id, query):
     db = init_connection_engine()
     stmt = sqlalchemy.text(
         "INSERT INTO alert_query_store (search_terms, url, raw_query_results)"
@@ -211,22 +250,22 @@ def save_query_data(qr_url, results, locus_id):
     try:
         search_term = "search_by_id(" + locus_id + ")"
         with db.connect() as conn:
-            row = conn.execute(stmt, search_terms=search_term, url=qr_url, raw_query_results=results)
+            row = conn.execute(stmt, search_terms=query, url=qr_url, raw_query_results=results)
             conn.close()
     except Exception as e:
         logger.log("an exception occurred!!!")
         logger.log_text(e)
 
-def save_alert_data(alert_url, alert):
+def save_alert_data(alert_url, alert, sci_stamp = None, diff_stamp = None, templ_stamp = None):
     db = init_connection_engine()
     stmt = sqlalchemy.text(
-        "INSERT INTO alert_stream_payloads (topic, url, raw_payload)"
-        "VALUES (:topic, :url, :raw_payload)"
+        "INSERT INTO alert_stream_payloads (topic, url, raw_payload, science_stamp_url, difference_stamp_url, template_stamp_url)"
+        "VALUES (:topic, :url, :raw_payload, :science_stamp_url, :difference_stamp_url, :template_stamp_url)"
     )
 
     try:
         with db.connect() as conn:
-            row = conn.execute(stmt, topic=TOPICS[0], url=alert_url, raw_payload=alert)
+            row = conn.execute(stmt, topic=TOPICS[0], url=alert_url, raw_payload=alert, science_stamp_url=sci_stamp, difference_stamp_url=diff_stamp, template_stamp_url=templ_stamp)
             conn.close()
     except Exception as e:
         logger.log(e)
