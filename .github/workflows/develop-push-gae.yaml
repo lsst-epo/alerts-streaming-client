@@ -23,7 +23,11 @@ jobs:
         service_account_key: ${{ secrets.DEV_SA_KEY }}
         project_id: skyviewer
         export_default_credentials: true
-    
+
+    # To prevent Cloud Build timeout, extend timeout deadline
+    - name: Extend Cloud Build timeout deadline
+      run: gcloud config set app/cloud_build_timeout 2000
+      
     # The app.yaml is explicitly ignored in the .gitignore
     - name: Create app.yaml
       run: touch app.yaml
