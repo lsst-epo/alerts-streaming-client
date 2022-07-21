@@ -197,6 +197,7 @@ def save_query_data(qr_url, results, locus_id, query):
         db = AlertQueryStore.get_db_connection(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS)
         alert_query_record = AlertQueryStore(search_terms = query, url=qr_url, raw_query_results=results)
         db.add(alert_query_record)
+        db.commit()
     except Exception as e:
         logger.log_text("An exception occurred while attempting to insert new records in the ALERT_QUERY_STORE database:")
         logger.log_text(e)   
@@ -206,6 +207,7 @@ def save_alert_data(alert_url, alert, sci_stamp = None, diff_stamp = None, templ
         db = AlertStreamPayloads.get_db_connection(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS)
         alert_stream_record = AlertStreamPayloads(topic=TOPICS[0], url=alert_url, raw_payload=alert, science_stamp_url=sci_stamp, difference_stamp_url=diff_stamp, template_stamp_url=templ_stamp)
         db.add(alert_stream_record)
+        db.commit()
     except Exception as e:
         logger.log_text("An exception occurred while attempting to insert new records in the ALERT_STREAM_PAYLOADS database:")
         logger.log_text(e)  
