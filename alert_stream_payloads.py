@@ -11,7 +11,7 @@ class AlertStreamPayloads(Base):
     edc_alert_stream_id = Column(Integer, primary_key=True)
     topic = Column(String(255))
     url = Column(String(500))
-    raw_payload = Text(String)
+    raw_payload = Column(Text)
     date_received = Column(DateTime)
     science_stamp_url = Column(String(255))
     difference_stamp_url = Column(String(255))
