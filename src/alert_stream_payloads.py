@@ -13,7 +13,6 @@ class AlertStreamPayloads(Base):
     topic = Column(String(255))
     url = Column(String(500))
     raw_payload = Column(Text)
-    # date_received = Column(DateTime)
     date_received = Column(DateTime(timezone=False), server_default=func.now())
     science_stamp_url = Column(String(255))
     difference_stamp_url = Column(String(255))
