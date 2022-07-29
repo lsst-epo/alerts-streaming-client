@@ -1,0 +1,33 @@
+name: 'Build Client for Main Branch PR Prior to Merge'
+
+on:
+  pull_request:
+    types:
+      - 'opened'
+      - 'synchronize'
+      - 'reopened'
+      - 'closed'
+    branches:
+      - 'main'
+
+jobs:
+  build-push-deploy:
+    name: 'Build Client Prior to Merge into Main Branch'
+    runs-on: ubuntu-latest
+    if: ${{ (github.event.action != 'closed') }}
+
+    # Checkout the repository to the GitHub Actions runner
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Setup docker build
+      uses: docker/setup-buildx-action@v2
+      id: buildx
+      with:
+        install: true
+
+    # The client takes > 10 minutes to build on average and Cloud Build has a timeout of 10 mins
+    # So build within the Github Actions environment, but don't deploy
+    - name: Build client, but don't deploy
+      run: docker build . # will run buildx
